@@ -9,7 +9,6 @@ import re
 app = Flask(__name__)
 
 # --- RENDER DATABASE & PATH FIX ---
-# This ensures paths work correctly on local Windows and Render Linux
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 # 1. Configuration
@@ -17,13 +16,13 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'bl
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Email Configuration (funfacts765@gmail.com)
+# Ensure you use a 16-character Google App Password for MAIL_PASSWORD
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USE_SSL'] = False  # Ensure this is False for Port 587
+app.config['MAIL_USE_SSL'] = False  # Critical: Must be False for Port 587
 app.config['MAIL_USERNAME'] = 'funfacts765@gmail.com' 
-# Use your 16-character Google App Password here
-app.config['MAIL_PASSWORD'] = 'mohu xeye wxlk tbps'
+app.config['MAIL_PASSWORD'] = 'mohu xeye wxlk tbps' 
 app.config['MAIL_DEFAULT_SENDER'] = 'funfacts765@gmail.com'
 app.config['MAIL_ASCII_ATTACHMENTS'] = False
 
@@ -176,7 +175,7 @@ def register():
         <h1 class="accent">REGISTRATION</h1>
         <form method="POST">
             <input type="text" name="name" placeholder="Full Name" required>
-            <input type="text" name="blood_group" placeholder="Blood Group (A+, A-, etc.)" required>
+            <input type="text" name="blood_group" placeholder="Blood Group (A+, A2B1+, etc.)" required>
             <input type="email" name="email" placeholder="Email Address" required>
             <button type="submit" class="nav-card" style="cursor:pointer; width:50%; margin-top:20px;">BECOME A DONOR</button>
         </form>
@@ -191,10 +190,10 @@ def search():
     hospitals = Center.query.all()
     return render_template_string(UI_STYLES + """
     <div class="container animate__animated animate__fadeIn">
-        <h1 class="accent">FIND BLOOD</h1>
+        <h1 class="accent">SEARCH</h1>
         <form action="/search">
             <input type="text" name="blood_group" placeholder="Enter Exact Group (e.g., A2B1+)" style="width: 350px;">
-            <button type="submit" class="nav-card" style="padding: 12px 25px; cursor:pointer;">SEARCH</button>
+            <button type="submit" class="nav-card" style="padding: 12px 25px; cursor:pointer;">FIND</button>
         </form>
         {% if donors %}
         <table class="animate__animated animate__fadeInUp">
@@ -231,7 +230,8 @@ def apply_blood(d_id):
         </div>
         """, donor_name=donor.name)
     except Exception as e:
-        return f"Error sending email: {str(e)}"
+        # Show specific SMTP error for debugging on Render
+        return f"Internal Server Error: {str(e)}"
 
 @app.route('/centers')
 def centers():
@@ -254,7 +254,6 @@ def seed_data():
         db.create_all()
         # Seed only if database is empty
         if Center.query.first() is None:
-            print("Auto-loading centers and donors from CSV...")
             tn_centers = [
                 ("Rajiv Gandhi Govt Hospital", "Chennai"), 
                 ("Government Stanley Hospital", "Chennai"), 
@@ -284,7 +283,6 @@ def seed_data():
                                 center_id=random.choice(c_list).id
                             ))
                 db.session.commit()
-                print("Database populated successfully!")
 
 seed_data()
 
