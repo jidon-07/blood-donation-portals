@@ -9,16 +9,23 @@ import re
 app = Flask(__name__)
 
 # --- RENDER DATABASE & PATH FIX ---
+# This ensures paths work correctly on local Windows and Render Linux
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 # 1. Configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'blood_bank.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Email Configuration (funfacts765@gmail.com)
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USE_SSL'] = False
 app.config['MAIL_USERNAME'] = 'funfacts765@gmail.com' 
+# Use a 16-character App Password from Google settings
 app.config['MAIL_PASSWORD'] = 'mohu xeye wxlk tbps'
+app.config['MAIL_DEFAULT_SENDER'] = 'funfacts765@gmail.com'
+
 mail = Mail(app)
 db = SQLAlchemy(app)
 
@@ -36,7 +43,7 @@ class Donor(db.Model):
     email = db.Column(db.String(100))
     center_id = db.Column(db.Integer, db.ForeignKey('center.id'))
 
-# 3. YOUR PERFECT UI STYLES + AUDIO ENGINE
+# 3. YOUR ORIGINAL VIDEO STYLES + AUDIO ENGINE
 UI_STYLES = """
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
 <style>
@@ -151,17 +158,18 @@ def register():
         bg = request.form.get('blood_group').strip().upper()
         email = request.form.get('email')
         centers = Center.query.all()
-        new_donor = Donor(name=name, blood_group=bg, email=email, center_id=random.choice(centers).id)
-        db.session.add(new_donor)
-        db.session.commit()
-        return render_template_string(UI_STYLES + """
-        <div class="container animate__animated animate__jackInTheBox">
-            <div style="font-size: 100px; margin-bottom: 20px;">😊</div>
-            <h1 class="accent">WELCOME ABOARD</h1>
-            <p>User <strong>{{ name }}</strong> added successfully!</p>
-            <a href="/" class="nav-card" style="display:inline-block; margin-top:30px; border-color: #fff;">RETURN HOME</a>
-        </div>
-        """, name=name)
+        if centers:
+            new_donor = Donor(name=name, blood_group=bg, email=email, center_id=random.choice(centers).id)
+            db.session.add(new_donor)
+            db.session.commit()
+            return render_template_string(UI_STYLES + """
+            <div class="container animate__animated animate__jackInTheBox">
+                <div style="font-size: 100px; margin-bottom: 20px;">😊</div>
+                <h1 class="accent">WELCOME ABOARD</h1>
+                <p>User <strong>{{ name }}</strong> added successfully!</p>
+                <a href="/" class="nav-card" style="display:inline-block; margin-top:30px; border-color: #fff;">RETURN HOME</a>
+            </div>
+            """, name=name)
     return render_template_string(UI_STYLES + """
     <div class="container animate__animated animate__fadeInUp">
         <h1 class="accent">REGISTRATION</h1>
@@ -240,7 +248,9 @@ def centers():
 def seed_data():
     with app.app_context():
         db.create_all()
+        # Only seed if database is empty
         if Center.query.first() is None:
+            print("Auto-loading centers and donors from CSV...")
             tn_centers = [
                 ("Rajiv Gandhi Govt Hospital", "Chennai"), 
                 ("Government Stanley Hospital", "Chennai"), 
@@ -261,15 +271,18 @@ def seed_data():
                     for row in reader:
                         name = row.get('donar name', '').strip()
                         bg = row.get('Blood Group', '').strip().upper()
+                        email = row.get('Email', '').strip()
                         if name:
                             db.session.add(Donor(
                                 name=name, 
                                 blood_group=bg, 
-                                email=row.get('Email', '').strip(), 
+                                email=email, 
                                 center_id=random.choice(c_list).id
                             ))
                 db.session.commit()
+                print("Database populated successfully!")
 
+# Ensure data is loaded before starting
 seed_data()
 
 if __name__ == '__main__':
