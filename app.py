@@ -20,11 +20,12 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USE_SSL'] = False
+app.config['MAIL_USE_SSL'] = False  # Ensure this is False for Port 587
 app.config['MAIL_USERNAME'] = 'funfacts765@gmail.com' 
-# Use a 16-character App Password from Google settings
+# Use your 16-character Google App Password here
 app.config['MAIL_PASSWORD'] = 'mohu xeye wxlk tbps'
 app.config['MAIL_DEFAULT_SENDER'] = 'funfacts765@gmail.com'
+app.config['MAIL_ASCII_ATTACHMENTS'] = False
 
 mail = Mail(app)
 db = SQLAlchemy(app)
@@ -219,15 +220,18 @@ def apply_blood(d_id):
     hospital = Center.query.get(request.form.get('h_id'))
     msg = Message('URGENT: Blood Donation Request', sender=app.config['MAIL_USERNAME'], recipients=[donor.email])
     msg.body = f"Hello {donor.name}, urgent {donor.blood_group} blood requested at {hospital.name}."
-    mail.send(msg)
-    return render_template_string(UI_STYLES + """
-    <div class="container animate__animated animate__zoomIn">
-        <div style="font-size: 100px; color: #4CAF50; margin-bottom: 20px;">✔️</div>
-        <h1 style="color: #4CAF50;">SUCCESS</h1>
-        <p>Email sent to <strong>{{ donor_name }}</strong> Successfully!</p>
-        <a href="/" class="nav-card" style="display:inline-block; margin-top:30px; border-color: #4CAF50; color: #4CAF50;">RETURN HOME</a>
-    </div>
-    """, donor_name=donor.name)
+    try:
+        mail.send(msg)
+        return render_template_string(UI_STYLES + """
+        <div class="container animate__animated animate__zoomIn">
+            <div style="font-size: 100px; color: #4CAF50; margin-bottom: 20px;">✔️</div>
+            <h1 style="color: #4CAF50;">SUCCESS</h1>
+            <p>Email sent to <strong>{{ donor_name }}</strong> Successfully!</p>
+            <a href="/" class="nav-card" style="display:inline-block; margin-top:30px; border-color: #4CAF50; color: #4CAF50;">RETURN HOME</a>
+        </div>
+        """, donor_name=donor.name)
+    except Exception as e:
+        return f"Error sending email: {str(e)}"
 
 @app.route('/centers')
 def centers():
@@ -248,7 +252,7 @@ def centers():
 def seed_data():
     with app.app_context():
         db.create_all()
-        # Only seed if database is empty
+        # Seed only if database is empty
         if Center.query.first() is None:
             print("Auto-loading centers and donors from CSV...")
             tn_centers = [
@@ -282,7 +286,6 @@ def seed_data():
                 db.session.commit()
                 print("Database populated successfully!")
 
-# Ensure data is loaded before starting
 seed_data()
 
 if __name__ == '__main__':
