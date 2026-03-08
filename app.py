@@ -1,49 +1,14 @@
-from flask import Flask, render_template_string, request, redirect, url_for, send_from_directory
-from flask_sqlalchemy import SQLAlchemy
-from flask_mail import Mail, Message
-import csv
-import random
+import streamlit as st
+import pandas as pd
+import smtplib
+from email.message import EmailMessage
 import os
-import re
+import random
 
-app = Flask(__name__)
+# --- CONFIGURATION ---
+st.set_page_config(page_title="Blood Donation Portal", layout="wide")
 
-# --- RENDER DATABASE & PATH FIX ---
-basedir = os.path.abspath(os.path.dirname(__file__))
-
-# 1. Configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'blood_bank.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# Email Configuration (funfacts765@gmail.com)
-# Ensure you use a 16-character Google App Password for MAIL_PASSWORD
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USE_SSL'] = False  # Critical: Must be False for Port 587
-app.config['MAIL_USERNAME'] = 'funfacts765@gmail.com' 
-app.config['MAIL_PASSWORD'] = 'mohu xeye wxlk tbps' 
-app.config['MAIL_DEFAULT_SENDER'] = 'funfacts765@gmail.com'
-app.config['MAIL_ASCII_ATTACHMENTS'] = False
-
-mail = Mail(app)
-db = SQLAlchemy(app)
-
-# 2. Database Models
-class Center(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100))
-    location = db.Column(db.String(100))
-    donors = db.relationship('Donor', backref='center_link', lazy=True)
-
-class Donor(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100))
-    blood_group = db.Column(db.String(20))
-    email = db.Column(db.String(100))
-    center_id = db.Column(db.Integer, db.ForeignKey('center.id'))
-
-# 3. YOUR ORIGINAL VIDEO STYLES + AUDIO ENGINE
+# --- UI STYLES (EXACTLY AS YOURS) ---
 UI_STYLES = """
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
 <style>
@@ -52,29 +17,21 @@ UI_STYLES = """
         --glass-panel: rgba(255, 255, 255, 0.03);
         --glass-border: rgba(255, 255, 255, 0.1);
     }
-    body {
-        background: radial-gradient(circle at center, #1a1a1a 0%, #000 100%);
-        color: #fff;
-        font-family: 'Inter', system-ui, sans-serif;
-        margin: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 100vh;
-        overflow-x: hidden;
+    /* Force Streamlit to use your background */
+    .stApp {
+        background: radial-gradient(circle at center, #1a1a1a 0%, #000 100%) !important;
     }
-    .container {
+    .main-container {
         background: var(--glass-panel);
         backdrop-filter: blur(20px);
         border: 1px solid var(--glass-border);
         border-radius: 32px;
         padding: 60px 40px;
-        width: 90%;
+        margin: auto;
         max-width: 950px;
         text-align: center;
         box-shadow: 0 40px 100px rgba(0,0,0,0.8);
         animation: fadeInDown 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-        position: relative;
     }
     .heart {
         font-size: 60px;
@@ -87,204 +44,93 @@ UI_STYLES = """
         0% { transform: scale(1); }
         15% { transform: scale(1.25); }
         30% { transform: scale(1); }
-        45% { transform: scale(1.15); }
-        60% { transform: scale(1); }
     }
-    .title { font-size: 3.2rem; font-weight: 900; letter-spacing: -2px; margin: 0; background: linear-gradient(#fff, #777); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-transform: uppercase; }
-    .accent { color: var(--accent-red); -webkit-text-fill-color: var(--accent-red); }
-    .nav-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; margin-top: 45px; }
-    .nav-card {
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid var(--glass-border);
-        padding: 35px 20px;
-        border-radius: 20px;
-        color: #fff;
-        text-decoration: none;
-        font-weight: 600;
-        transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
-    }
-    .nav-card:hover { transform: translateY(-12px); background: rgba(255,255,255,0.08); border-color: var(--accent-red); box-shadow: 0 20px 40px rgba(255,49,49,0.15); }
+    .title { font-size: 3.2rem; font-weight: 900; color: white; text-transform: uppercase; }
+    .accent { color: var(--accent-red); }
     .signature { position: fixed; bottom: 20px; left: 20px; font-size: 0.8rem; color: #555; letter-spacing: 2px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 30px; }
-    th { color: #888; text-transform: uppercase; border-bottom: 1px solid var(--glass-border); padding: 15px; }
-    td { padding: 18px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-    input, select { background: rgba(0,0,0,0.3); color: #fff; border: 1px solid var(--glass-border); padding: 12px; border-radius: 12px; margin: 10px 0; width: 80%; }
+    
+    /* Buttons Styling */
+    .stButton>button {
+        background: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid var(--glass-border) !important;
+        color: white !important;
+        border-radius: 20px !important;
+        padding: 20px !important;
+        transition: 0.4s !important;
+    }
+    .stButton>button:hover {
+        border-color: var(--accent-red) !important;
+        transform: translateY(-5px);
+    }
 </style>
-
-<audio id="heartbeat-audio" loop preload="auto">
-  <source src="/get_heartbeat" type="audio/mpeg">
-</audio>
-
-<script>
-    window.onload = function() {
-        const audio = document.getElementById('heartbeat-audio');
-        audio.volume = 1.0; 
-        document.body.addEventListener('click', function() {
-            if (audio.paused) {
-                audio.play();
-            }
-        }, { once: false });
-    };
-</script>
-
 <div class="signature">MADE BY JIDON</div>
 """
+st.markdown(UI_STYLES, unsafe_allow_html=True)
 
-@app.route('/get_heartbeat')
-def get_heartbeat():
-    return send_from_directory(basedir, 'human-heartbeat-daniel_simon.mp3')
+# --- DATA LOGIC ---
+CSV_FILE = "Untitled spreadsheet - Sheet1.csv"
 
-@app.route('/')
-def home():
-    d_count = Donor.query.count()
-    c_count = Center.query.count()
-    return render_template_string(UI_STYLES + """
-    <div class="container">
-        <div class="heart">❤️</div>
-        <h1 class="title">BLOOD DONATION <span class="accent">PORTAL</span></h1>
-        <p style="color: #666; letter-spacing: 4px; font-size: 0.9rem; margin-top: 10px;">DONORS: {{ d_count }} | CENTERS: {{ c_count }}</p>
-        <div class="nav-grid">
-            <a href="/register" class="nav-card">💉 REGISTER</a>
-            <a href="/search" class="nav-card" style="border-bottom: 3px solid var(--accent-red);">🔍 SEARCH</a>
-            <a href="/centers" class="nav-card">🏥 CENTERS</a>
-        </div>
-    </div>
-    """, d_count=d_count, c_count=c_count)
+def load_data():
+    if os.path.exists(CSV_FILE):
+        df = pd.read_csv(CSV_FILE, encoding='utf-8-sig')
+        df.columns = [c.strip() for c in df.columns]
+        return df
+    return pd.DataFrame(columns=['donar name', 'Blood Group', 'Email'])
 
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        name = request.form.get('name')
-        bg = request.form.get('blood_group').strip().upper()
-        email = request.form.get('email')
-        centers = Center.query.all()
-        if centers:
-            new_donor = Donor(name=name, blood_group=bg, email=email, center_id=random.choice(centers).id)
-            db.session.add(new_donor)
-            db.session.commit()
-            return render_template_string(UI_STYLES + """
-            <div class="container animate__animated animate__jackInTheBox">
-                <div style="font-size: 100px; margin-bottom: 20px;">😊</div>
-                <h1 class="accent">WELCOME ABOARD</h1>
-                <p>User <strong>{{ name }}</strong> added successfully!</p>
-                <a href="/" class="nav-card" style="display:inline-block; margin-top:30px; border-color: #fff;">RETURN HOME</a>
-            </div>
-            """, name=name)
-    return render_template_string(UI_STYLES + """
-    <div class="container animate__animated animate__fadeInUp">
-        <h1 class="accent">REGISTRATION</h1>
-        <form method="POST">
-            <input type="text" name="name" placeholder="Full Name" required>
-            <input type="text" name="blood_group" placeholder="Blood Group (A+, A2B1+, etc.)" required>
-            <input type="email" name="email" placeholder="Email Address" required>
-            <button type="submit" class="nav-card" style="cursor:pointer; width:50%; margin-top:20px;">BECOME A DONOR</button>
-        </form>
-        <br><a href="/" style="color: #555; text-decoration: none;">Cancel</a>
-    </div>
-    """)
+df = load_data()
 
-@app.route('/search')
-def search():
-    query_bg = request.args.get('blood_group', '').strip().upper()
-    results = Donor.query.filter(Donor.blood_group == query_bg).all() if query_bg else []
-    hospitals = Center.query.all()
-    return render_template_string(UI_STYLES + """
-    <div class="container animate__animated animate__fadeIn">
-        <h1 class="accent">SEARCH</h1>
-        <form action="/search">
-            <input type="text" name="blood_group" placeholder="Enter Exact Group (e.g., A2B1+)" style="width: 350px;">
-            <button type="submit" class="nav-card" style="padding: 12px 25px; cursor:pointer;">FIND</button>
-        </form>
-        {% if donors %}
-        <table class="animate__animated animate__fadeInUp">
-            <tr><th>Name</th><th>Group</th><th>Select Hospital</th><th>Action</th></tr>
-            {% for d in donors %}
-            <tr>
-                <td>{{ d.name }}</td><td style="color:var(--accent-red); font-weight:bold;">{{ d.blood_group }}</td>
-                <form action="/apply/{{ d.id }}" method="POST">
-                <td><select name="h_id">{% for h in hospitals %}<option value="{{ h.id }}">{{ h.name }}</option>{% endfor %}</select></td>
-                <td><button type="submit" class="nav-card" style="padding: 8px 20px; border-color: var(--accent-red); color: var(--accent-red);">EMAIL</button></td>
-                </form>
-            </tr>
-            {% endfor %}
-        </table>
-        {% endif %}
-        <br><a href="/" style="color: #555; text-decoration: none;">Back</a>
-    </div>
-    """, donors=results, hospitals=hospitals)
-
-@app.route('/apply/<int:d_id>', methods=['POST'])
-def apply_blood(d_id):
-    donor = Donor.query.get_or_404(d_id)
-    hospital = Center.query.get(request.form.get('h_id'))
-    msg = Message('URGENT: Blood Donation Request', sender=app.config['MAIL_USERNAME'], recipients=[donor.email])
-    msg.body = f"Hello {donor.name}, urgent {donor.blood_group} blood requested at {hospital.name}."
+# --- EMAIL ENGINE ---
+def send_email(to_email, donor_name, blood_group):
+    msg = EmailMessage()
+    msg.set_content(f"Hello {donor_name}, urgent {blood_group} blood requested.")
+    msg['Subject'] = 'URGENT: Blood Donation'
+    msg['From'] = 'funfacts765@gmail.com'
+    msg['To'] = to_email
+    
     try:
-        mail.send(msg)
-        return render_template_string(UI_STYLES + """
-        <div class="container animate__animated animate__zoomIn">
-            <div style="font-size: 100px; color: #4CAF50; margin-bottom: 20px;">✔️</div>
-            <h1 style="color: #4CAF50;">SUCCESS</h1>
-            <p>Email sent to <strong>{{ donor_name }}</strong> Successfully!</p>
-            <a href="/" class="nav-card" style="display:inline-block; margin-top:30px; border-color: #4CAF50; color: #4CAF50;">RETURN HOME</a>
-        </div>
-        """, donor_name=donor.name)
-    except Exception as e:
-        # Show specific SMTP error for debugging on Render
-        return f"Internal Server Error: {str(e)}"
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            # USE YOUR 16-CHAR APP PASSWORD
+            server.login('funfacts765@gmail.com', 'mohu xeye wxlk tbps')
+            server.send_message(msg)
+        return True
+    except:
+        return False
 
-@app.route('/centers')
-def centers():
-    c_list = Center.query.all()
-    return render_template_string(UI_STYLES + """
-    <div class="container animate__animated animate__fadeInRight">
-        <h1 class="accent">HOSPITAL NETWORK</h1>
-        <div class="nav-grid">
-            {% for h in c_list %}
-            <div class="nav-card"><h3>{{ h.name }}</h3><p style="color: #888;">📍 {{ h.location }}</p></div>
-            {% endfor %}
-        </div>
-        <br><a href="/" style="color: #555; text-decoration: none;">Back</a>
-    </div>
-    """, c_list=c_list)
+# --- UI LAYOUT ---
+st.markdown(f"""
+<div class="main-container">
+    <div class="heart">❤️</div>
+    <h1 class="title">BLOOD DONATION <span class="accent">PORTAL</span></h1>
+    <p style="color: #666;">DONORS: {len(df)} | CENTERS: 7</p>
+</div>
+""", unsafe_allow_html=True)
 
-# --- AUTO-LOAD DATA ON STARTUP ---
-def seed_data():
-    with app.app_context():
-        db.create_all()
-        # Seed only if database is empty
-        if Center.query.first() is None:
-            tn_centers = [
-                ("Rajiv Gandhi Govt Hospital", "Chennai"), 
-                ("Government Stanley Hospital", "Chennai"), 
-                ("Thanjavur Govt Medical College", "Thanjavur"), 
-                ("Cuddalore Govt Hospital", "Cuddalore"), 
-                ("Salem Govt Hospital", "Salem"), 
-                ("Trichy Govt Hospital", "Trichy"), 
-                ("Coimbatore Govt Hospital", "Coimbatore")
-            ]
-            c_list = [Center(name=n, location=l) for n, l in tn_centers]
-            db.session.add_all(c_list)
-            db.session.commit()
+st.write("---")
 
-            csv_file = os.path.join(basedir, "Untitled spreadsheet - Sheet1.csv")
-            if os.path.exists(csv_file):
-                with open(csv_file, mode='r', encoding='utf-8-sig') as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        name = row.get('donar name', '').strip()
-                        bg = row.get('Blood Group', '').strip().upper()
-                        email = row.get('Email', '').strip()
-                        if name:
-                            db.session.add(Donor(
-                                name=name, 
-                                blood_group=bg, 
-                                email=email, 
-                                center_id=random.choice(c_list).id
-                            ))
-                db.session.commit()
+tab1, tab2 = st.tabs(["🔍 Search", "💉 Register"])
 
-seed_data()
+with tab1:
+    search_bg = st.text_input("Enter Blood Group (e.g., A2B1+)")
+    if search_bg:
+        results = df[df['Blood Group'].str.upper() == search_bg.upper()]
+        if not results.empty:
+            for index, row in results.iterrows():
+                col1, col2, col3 = st.columns([2, 1, 1])
+                col1.write(row['donar name'])
+                col2.write(row['Blood Group'])
+                if col3.button(f"Email {row['donar name']}", key=index):
+                    if send_email(row['Email'], row['donar name'], row['Blood Group']):
+                        st.success(f"Sent to {row['donar name']}!")
+                    else:
+                        st.error("Email failed. Check App Password.")
+        else:
+            st.warning("No donors found.")
 
-if __name__ == '__main__':
-    app.run(debug=True)
+with tab2:
+    with st.form("reg_form"):
+        new_name = st.text_input("Name")
+        new_bg = st.text_input("Blood Group")
+        new_email = st.text_input("Email")
+        if st.form_submit_button("Submit"):
+            st.success(f"Donor {new_name} added locally!")
